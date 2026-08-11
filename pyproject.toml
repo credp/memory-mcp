@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "memory-mcp"
-version = "0.1.0"
+version = "0.0.2"
 description = "A local MCP interface to a user-owned Git repository of durable memory"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,4 +28,3 @@ packages = ["src/memory_mcp"]
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
-

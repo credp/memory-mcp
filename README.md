@@ -204,6 +204,20 @@ uv run pytest
 
 Tests create isolated temporary Git repositories and cover listing, reading, literal search, history, diff, capture, dirty trees, spaces, Unicode, traversal, escaping symlinks, missing/non-Git/empty repositories, malformed and oversized files, capture filename collisions, and Git failures.
 
+To prepare a patch release from a clean working tree:
+
+```sh
+make release
+```
+
+`make release` defaults to a patch increment (for example, `0.0.2` to `0.0.3`);
+`make release BUMP=patch` is the explicit equivalent. Use
+`make release BUMP=minor` or `make release BUMP=major` when those larger version
+increments are intended. The command runs the tests, updates `pyproject.toml`
+and `uv.lock`, creates a release commit, and adds the matching annotated Git
+tag locally. It prints the separate `git push` command needed to publish the
+release.
+
 ## Roadmap
 
 **Phase 1 (implemented):** read-only-by-default list, read, textual search,
