@@ -14,9 +14,13 @@ from conftest import git
 
 def test_server_exposes_memory_usage_guidance() -> None:
     assert mcp.instructions == SERVER_INSTRUCTIONS
-    assert "Search memory before assuming" in mcp.instructions
-    assert "supporting context, not unquestionable truth" in mcp.instructions
-    assert "prefer reviewed/current material" in mcp.instructions
+    instructions = " ".join(mcp.instructions.split())
+    assert "persistent memory across agents and conversations" in instructions
+    assert "primary place to read or store durable context" in instructions
+    assert "Not every request requires memory" in instructions
+    assert "supporting context, not unquestionable truth" in instructions
+    assert "prefer reviewed/current material" in instructions
+    assert "Do not store credentials, secrets" in instructions
 
 
 def test_list_normal_recursive_and_hides_git(memory: MemoryRepository) -> None:
@@ -158,4 +162,3 @@ def test_invalid_inputs_are_bounded(memory: MemoryRepository) -> None:
         memory.history(limit=0)
     with pytest.raises(MemoryError):
         memory.capture("  ", "inbox")
-

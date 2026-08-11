@@ -94,6 +94,47 @@ codex mcp list
 Restart Codex after adding or changing the server. In the Codex terminal UI,
 `/mcp` shows the active MCP servers and their tools.
 
+#### Tell Codex about persistent memory
+
+The server advertises its purpose through the MCP `instructions` field, but a
+small global Codex instruction makes the intended relationship explicit: this
+repository is the user's persistent context across agents, chats, and projects,
+not merely a tool to use when working on `memory-mcp` itself.
+
+Add the following boilerplate to `$CODEX_HOME/AGENTS.md`. `CODEX_HOME` defaults
+to `~/.codex`, so the usual location is `~/.codex/AGENTS.md`:
+
+```md
+## Persistent memory
+
+A user-owned persistent memory is available through the `memory` MCP.
+
+Use it as the primary place to read or store durable context relevant to the
+user's request, including prior decisions, preferences, constraints, projects,
+and historical reasoning.
+
+Search memory when existing context could materially improve the task. Do not
+assume every request requires memory.
+
+Treat retrieved memories as supporting context, not unquestionable truth.
+Prefer reviewed/current material over inbox, candidate, or historical material.
+
+Store information only when it is likely to remain useful across future agents
+or conversations. Do not store credentials, secrets, or sensitive information
+unless the user explicitly requests it.
+```
+
+Codex reads this global file before project-level `AGENTS.md` files. If
+`$CODEX_HOME/AGENTS.override.md` exists and is non-empty, Codex uses it instead
+of the global `AGENTS.md`; put the boilerplate there as well, or remove the
+override, if the memory guidance is not being loaded. Start a new Codex session
+after changing the file because the instruction chain is assembled once per
+run.
+
+This is intentionally a relevance rule, not a requirement to load memory at
+the start of every session. Codex should consult memory when it can improve the
+user's task and leave it alone for self-contained requests.
+
 To update a source-checkout installation when this upstream repository gains
 new commits:
 

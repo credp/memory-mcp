@@ -9,18 +9,24 @@ from mcp.server.fastmcp import FastMCP
 from .errors import MemoryError
 from .repository import MemoryRepository
 
-SERVER_INSTRUCTIONS = """This server provides durable engineering or personal memory.
+SERVER_INSTRUCTIONS = """This server is the user's persistent memory across agents and conversations.
 
-Use it when existing knowledge, prior decisions, historical reasoning,
-preferences, constraints, or previously explored ideas could materially
-improve the current task.
+Use it as the primary place to read or store durable context relevant to the
+user's request, including prior decisions, preferences, constraints, projects,
+historical reasoning, and previously explored ideas.
 
-Search memory before assuming that a design decision is new or unexplored.
+Search memory when existing context could materially improve the task, and
+before assuming that a design decision is new or unexplored. Not every request
+requires memory.
 
 Treat memory as supporting context, not unquestionable truth.
 
 Where the repository distinguishes reviewed/current material from candidate
-material, prefer reviewed/current material unless the task requires otherwise."""
+material, prefer reviewed/current material unless the task requires otherwise.
+
+Store information only when it is likely to remain useful across future agents
+or conversations. Do not store credentials, secrets, or sensitive information
+unless the user explicitly requests it."""
 
 mcp = FastMCP(
     "memory-mcp",
