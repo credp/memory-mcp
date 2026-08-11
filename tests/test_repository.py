@@ -8,7 +8,15 @@ import pytest
 
 from memory_mcp.errors import InvalidPathError, MemoryError, RepositoryError
 from memory_mcp.repository import MAX_READ_BYTES, MemoryRepository
+from memory_mcp.server import SERVER_INSTRUCTIONS, mcp
 from conftest import git
+
+
+def test_server_exposes_memory_usage_guidance() -> None:
+    assert mcp.instructions == SERVER_INSTRUCTIONS
+    assert "Search memory before assuming" in mcp.instructions
+    assert "supporting context, not unquestionable truth" in mcp.instructions
+    assert "prefer reviewed/current material" in mcp.instructions
 
 
 def test_list_normal_recursive_and_hides_git(memory: MemoryRepository) -> None:

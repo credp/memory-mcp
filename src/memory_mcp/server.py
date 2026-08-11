@@ -9,9 +9,22 @@ from mcp.server.fastmcp import FastMCP
 from .errors import MemoryError
 from .repository import MemoryRepository
 
+SERVER_INSTRUCTIONS = """This server provides durable engineering or personal memory.
+
+Use it when existing knowledge, prior decisions, historical reasoning,
+preferences, constraints, or previously explored ideas could materially
+improve the current task.
+
+Search memory before assuming that a design decision is new or unexplored.
+
+Treat memory as supporting context, not unquestionable truth.
+
+Where the repository distinguishes reviewed/current material from candidate
+material, prefer reviewed/current material unless the task requires otherwise."""
+
 mcp = FastMCP(
     "memory-mcp",
-    instructions="Local filesystem and Git mechanisms for a user-owned memory repository.",
+    instructions=SERVER_INSTRUCTIONS,
 )
 
 
