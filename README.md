@@ -70,6 +70,46 @@ An MCP client configuration commonly looks like:
 
 The exact outer configuration format varies by client. For a global install, `uv tool install .` provides the `memory-mcp` command.
 
+### Codex
+
+Codex CLI, the Codex IDE extension, and the ChatGPT desktop app share MCP
+configuration on the same host. With this repository checked out locally, add
+the server from a shell as follows, replacing the memory path if necessary:
+
+```sh
+cd /path/to/memory-mcp
+uv sync
+codex mcp add memory \
+  --env MEMORY_MCP_REPOSITORY="$HOME/Projects/memory" \
+  -- uv --directory "$PWD" run memory-mcp
+```
+
+Use an absolute path for the memory repository. The shell expands `$HOME` and
+`$PWD` before Codex stores the configuration. Confirm the result with:
+
+```sh
+codex mcp list
+```
+
+Restart Codex after adding or changing the server. In the Codex terminal UI,
+`/mcp` shows the active MCP servers and their tools.
+
+To update a source-checkout installation when this upstream repository gains
+new commits:
+
+```sh
+cd /path/to/memory-mcp
+git pull --ff-only
+uv sync
+uv run pytest
+```
+
+Then restart Codex so it launches the updated server. The MCP configuration
+does not need to be added again because it continues to point at the checkout.
+`git pull --ff-only` deliberately stops instead of creating an implicit merge
+if the local branch and upstream have diverged; review or preserve local work
+before resolving that situation.
+
 ## Tools
 
 - `list_memories(path="", recursive=false)` lists directory entries. `.git` internals are excluded.
