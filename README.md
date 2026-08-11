@@ -52,6 +52,11 @@ git -C "$HOME/Projects/memory" init
 
 Set `MEMORY_MCP_REPOSITORY` in the process environment to that repository's root. Do not put a private absolute path in a committed configuration file.
 
+The server defaults to **read-only mode**. In this mode it does not register or
+advertise any tool capable of changing the memory repository. To deliberately
+enable new-file capture, set `MEMORY_MCP_MODE=read-write`. Any other value is
+rejected, so a typo cannot accidentally enable writes.
+
 An MCP client configuration commonly looks like:
 
 ```json
@@ -158,7 +163,7 @@ before resolving that situation.
 - `search_memories(query, path="", case_sensitive=false, limit=100)` performs deterministic literal line search. Oversized and malformed files are skipped.
 - `history(path="", limit=20)` returns bounded Git history with commit, timestamp, author, and subject.
 - `diff(path="")` returns tracked working-tree changes against `HEAD` and separately lists untracked files. In an unborn repository it reports the staged diff.
-- `capture(content, destination="")` writes the content unchanged (apart from ensuring a final newline) to a new Markdown file. `destination` is a configurable, existing relative directory; the neutral default is the repository root. Creation uses an exclusive filename and does not stage or commit anything.
+- `capture(content, destination="")` is available only in explicit `read-write` mode. It writes the content unchanged (apart from ensuring a final newline) to a new Markdown file. `destination` is a configurable, existing relative directory; the neutral default is the repository root. Creation uses an exclusive filename and does not stage or commit anything.
 
 File reads are limited to 2 MiB, search skips files over 2 MiB, history is limited to 100 commits, and search is limited to 1,000 matches. These conservative v1 bounds keep MCP responses manageable.
 
@@ -166,9 +171,14 @@ File reads are limited to 2 MiB, search skips files over 2 MiB, history is limit
 
 Each `MemoryRepository` instance is a security boundary. All external paths are relative to its exact Git root. Absolute paths, traversal with `..`, and symlinks resolving outside the root are rejected. Recursive operations do not follow symlinks, and returned data does not reveal the configured absolute path.
 
-V1 exposes one repository with read/write capture access. Its code is structured around a repository-bound object so future routing can give independent repositories read/write, read-only, or invisible status. Cross-repository search must remain impossible unless a later operation explicitly authorises named repositories.
+V1 exposes one repository and defaults to read-only access. Operators can
+explicitly opt into read-write capture with `MEMORY_MCP_MODE=read-write`. Its
+code is structured around a repository-bound object so future routing can give
+independent repositories read/write, read-only, or invisible status.
+Cross-repository search must remain impossible unless a later operation
+explicitly authorises named repositories.
 
-Repository content stays local: there are no cloud calls, external indexing, analytics, or telemetry. The public server repository contains no user data or configured memory path. MCP clients and the agents using them are nevertheless part of the trust boundary: a client with access can read the configured repository and invoke capture.
+Repository content stays local: there are no cloud calls, external indexing, analytics, or telemetry. The public server repository contains no user data or configured memory path. MCP clients and the agents using them are nevertheless part of the trust boundary: a client with access can read the configured repository and, only in explicit read-write mode, invoke capture.
 
 Git operations are read-only in V1. The server never resets, discards changes, rewrites history, pushes, stages, or commits. Capture creates an obvious untracked file with mode `0600`. Dirty working trees are left intact.
 
@@ -196,7 +206,8 @@ Tests create isolated temporary Git repositories and cover listing, reading, lit
 
 ## Roadmap
 
-**Phase 1 (implemented):** list, read, textual search, history, diff, capture.
+**Phase 1 (implemented):** read-only-by-default list, read, textual search,
+history, and diff; optional explicit read-write capture.
 
 **Phase 2:** `propose_change`, `apply_change`, scoped commits, base-commit provenance using ordinary Git history, and richer Markdown section addressing.
 

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from memory_mcp.errors import InvalidPathError, MemoryError, RepositoryError
 from memory_mcp.repository import MAX_READ_BYTES, MemoryRepository
-from memory_mcp.server import SERVER_INSTRUCTIONS, mcp
+from memory_mcp.server import MODE, READ_ONLY_MODE, SERVER_INSTRUCTIONS, mcp
 from conftest import git
 
 
@@ -21,6 +22,30 @@ def test_server_exposes_memory_usage_guidance() -> None:
     assert "supporting context, not unquestionable truth" in instructions
     assert "prefer reviewed/current material" in instructions
     assert "Do not store credentials, secrets" in instructions
+    assert MODE == READ_ONLY_MODE
+    assert "This deployment is read-only" in instructions
+    assert "capture" not in mcp._tool_manager._tools
+
+
+def test_read_write_mode_explicitly_enables_capture() -> None:
+    environment = os.environ.copy()
+    environment["MEMORY_MCP_MODE"] = "read-write"
+    result = subprocess.run(
+        [sys.executable, "-c", "from memory_mcp.server import mcp; print(','.join(mcp._tool_manager._tools))"],
+        check=True, text=True, capture_output=True, env=environment,
+    )
+    assert "capture" in result.stdout.splitlines()[-1].split(",")
+
+
+def test_invalid_mode_fails_closed() -> None:
+    environment = os.environ.copy()
+    environment["MEMORY_MCP_MODE"] = "maybe"
+    result = subprocess.run(
+        [sys.executable, "-c", "import memory_mcp.server"],
+        text=True, capture_output=True, env=environment,
+    )
+    assert result.returncode != 0
+    assert "MEMORY_MCP_MODE must be one of" in result.stderr
 
 
 def test_list_normal_recursive_and_hides_git(memory: MemoryRepository) -> None:

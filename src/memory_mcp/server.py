@@ -9,6 +9,22 @@ from mcp.server.fastmcp import FastMCP
 from .errors import MemoryError
 from .repository import MemoryRepository
 
+READ_ONLY_MODE = "read-only"
+READ_WRITE_MODE = "read-write"
+VALID_MODES = {READ_ONLY_MODE, READ_WRITE_MODE}
+
+
+def configured_mode() -> str:
+    """Return the deployment mode, failing closed on invalid configuration."""
+    mode = os.environ.get("MEMORY_MCP_MODE", READ_ONLY_MODE).strip().lower()
+    if mode not in VALID_MODES:
+        choices = ", ".join(sorted(VALID_MODES))
+        raise MemoryError(f"MEMORY_MCP_MODE must be one of: {choices}")
+    return mode
+
+
+MODE = configured_mode()
+
 SERVER_INSTRUCTIONS = """This server is the user's persistent memory across agents and conversations.
 
 Use it as the primary place to read or store durable context relevant to the
@@ -27,6 +43,12 @@ material, prefer reviewed/current material unless the task requires otherwise.
 Store information only when it is likely to remain useful across future agents
 or conversations. Do not store credentials, secrets, or sensitive information
 unless the user explicitly requests it."""
+
+if MODE == READ_ONLY_MODE:
+    SERVER_INSTRUCTIONS += """
+
+This deployment is read-only. It provides no tool that creates or modifies
+memories."""
 
 mcp = FastMCP(
     "memory-mcp",
@@ -72,10 +94,13 @@ def diff(path: str = "") -> dict[str, Any]:
     return repository().diff(path)
 
 
-@mcp.tool()
 def capture(content: str, destination: str = "") -> dict[str, Any]:
     """Atomically capture text verbatim in a new Markdown file; do not stage or commit it."""
     return repository().capture(content, destination)
+
+
+if MODE == READ_WRITE_MODE:
+    mcp.tool()(capture)
 
 
 def main() -> None:
