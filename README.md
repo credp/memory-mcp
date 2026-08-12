@@ -38,7 +38,7 @@ Python 3.11+ was chosen for its mature standard-library filesystem, subprocess, 
 Using [`uv`](https://docs.astral.sh/uv/):
 
 ```sh
-git clone https://github.com/YOUR-ACCOUNT/memory-mcp.git
+git clone https://github.com/credp/memory-mcp.git
 cd memory-mcp
 uv sync
 ```
