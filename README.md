@@ -82,6 +82,20 @@ An MCP client configuration commonly looks like:
 
 The exact outer configuration format varies by client. For a global install, `uv tool install .` provides the `memory-mcp` command.
 
+### Updating the memory repository
+
+For now, general memory updates happen through the filesystem and Git, not
+through MCP tools. A person or an agent may use any suitable manual or
+AI-assisted workflow to create, edit, move, review, and commit Markdown files in
+the memory repository. `memory-mcp` does not prescribe that workflow; the Git
+repository remains the source of truth.
+
+The only current MCP write mechanism is the optional `capture` tool, which is
+available when a server instance is explicitly configured with
+`MEMORY_MCP_MODE=read-write`. Capture only creates a new untracked Markdown file
+and is not a general editing or repository-maintenance interface. In the default
+read-only mode, all updates must happen outside the MCP server.
+
 ### Codex
 
 Codex CLI, the Codex IDE extension, and the ChatGPT desktop app share MCP
@@ -189,9 +203,13 @@ Repository content stays local: there are no cloud calls, external indexing, ana
 
 Git operations are read-only in V1. The server never resets, discards changes, rewrites history, pushes, stages, or commits. Capture creates an obvious untracked file with mode `0600`. Dirty working trees are left intact.
 
-## Proposed mutation model (Phase 2)
+## Possible future MCP mutation model (Phase 2)
 
-General-purpose editing needs reviewable Git contributions, not hidden writes or a second concurrency protocol:
+The current update model is direct filesystem and Git access, as described
+above. If general-purpose mutation is later added to the MCP interface, it
+should use reviewable Git contributions rather than hidden writes or a second
+concurrency protocol. The structure is not yet decided; the following is one
+possible design rather than a committed interface:
 
 1. `propose_change` accepts agent-constructed file operations or a patch and records the base commit the agent actually inspected. It validates paths and patch structure without changing the worktree, then returns the proposal and preview diff.
 2. The user or agent reviews that diff.
@@ -230,7 +248,10 @@ release.
 **Phase 1 (implemented):** read-only-by-default list, read, textual search,
 history, and diff; optional explicit read-write capture.
 
-**Phase 2:** `propose_change`, `apply_change`, scoped commits, base-commit provenance using ordinary Git history, and richer Markdown section addressing.
+**Phase 2:** explore whether general-purpose MCP mutation is useful and, if so,
+design a reviewable Git-based interface. Until then, memory repositories are
+updated directly through the filesystem and Git; richer Markdown section
+addressing may be developed independently.
 
 **Phase 3:** improve support and documentation for multi-memory installations
 by running one separately named MCP server instance per repository. Each
