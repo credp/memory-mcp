@@ -27,7 +27,14 @@ It is deliberately not a database, ontology, knowledge graph, hosted service, ag
 
 ## Architecture
 
-The Python core is bound to exactly one configured repository root. It validates repository-relative paths and provides dependency-light filesystem and Git operations. A thin adapter exposes those operations as MCP tools over stdio. The server makes no network requests and sends no telemetry.
+The Python core and each running server instance are bound to exactly one configured repository root. It validates repository-relative paths and provides dependency-light filesystem and Git operations. A thin adapter exposes those operations as MCP tools over stdio. The server makes no network requests and sends no telemetry.
+
+Installations that use more than one memory repository should configure a
+separate MCP server instance for each repository. The MCP client gives each
+instance a distinct name and starts it with that repository's own
+`MEMORY_MCP_REPOSITORY` and, where appropriate, `MEMORY_MCP_MODE`. This keeps
+repository selection and permissions at the MCP configuration boundary rather
+than adding routing or cross-repository operations to `memory-mcp`.
 
 The memory repository may use any layout. Names such as `projects/`, `principles/`, or `inbox/` carry no protocol meaning. V1 understands only a repository, relative paths, text files, and Git changes.
 
@@ -171,12 +178,12 @@ File reads are limited to 2 MiB, search skips files over 2 MiB, history is limit
 
 Each `MemoryRepository` instance is a security boundary. All external paths are relative to its exact Git root. Absolute paths, traversal with `..`, and symlinks resolving outside the root are rejected. Recursive operations do not follow symlinks, and returned data does not reveal the configured absolute path.
 
-V1 exposes one repository and defaults to read-only access. Operators can
-explicitly opt into read-write capture with `MEMORY_MCP_MODE=read-write`. Its
-code is structured around a repository-bound object so future routing can give
-independent repositories read/write, read-only, or invisible status.
-Cross-repository search must remain impossible unless a later operation
-explicitly authorises named repositories.
+Each server instance exposes one repository and defaults to read-only access.
+Operators can explicitly opt into read-write capture with
+`MEMORY_MCP_MODE=read-write`. Multiple repositories are exposed through
+separately named MCP server instances, so each repository retains an independent
+security and permission boundary. A server instance never routes to another
+repository or performs cross-repository operations.
 
 Repository content stays local: there are no cloud calls, external indexing, analytics, or telemetry. The public server repository contains no user data or configured memory path. MCP clients and the agents using them are nevertheless part of the trust boundary: a client with access can read the configured repository and, only in explicit read-write mode, invoke capture.
 
@@ -225,7 +232,10 @@ history, and diff; optional explicit read-write capture.
 
 **Phase 2:** `propose_change`, `apply_change`, scoped commits, base-commit provenance using ordinary Git history, and richer Markdown section addressing.
 
-**Phase 3:** multiple repositories, per-repository permissions, repository discovery/configuration, and cross-repository operations only when explicitly authorised.
+**Phase 3:** improve support and documentation for multi-memory installations
+by running one separately named MCP server instance per repository. Each
+instance remains bound to one repository and has its own access mode; repository
+routing, discovery, and cross-repository operations remain outside the server.
 
 Possible later experiments include semantic search, local embeddings, related-memory discovery, structured frontmatter, and agent-assisted consolidation. They must remain optional layers; the core will never require them.
 
