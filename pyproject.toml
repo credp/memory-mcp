@@ -21,6 +21,9 @@ dev = ["pytest>=8,<10"]
 
 [project.scripts]
 memory-mcp = "memory_mcp.server:main"
+memory-mcp-http = "memory_mcp.http_server:main"
+memory-mcp-github-askpass = "memory_mcp.github_askpass:main"
+memory-mcp-service = "memory_mcp.service_installer:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/memory_mcp"]

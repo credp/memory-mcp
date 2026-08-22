@@ -122,6 +122,65 @@ service or MCP contract.
 }
 ```
 
+### Protected local service
+
+When Codex must not inherit the GitHub credential, install pull-request mode as
+a persistent loopback service under a separate Unix identity. This installer is
+Linux/systemd-specific. It requires an existing clean checkout on `main`, a
+credential-free `https://github.com/...` origin, the `gh` CLI, and root access.
+
+Create a fine-grained PAT restricted to the memory repository with repository
+permissions `Contents: read and write` and `Pull requests: write`. Then run:
+
+```sh
+sudo "$(command -v memory-mcp-service)" install home-operations \
+  --repository /srv/memory/home-operations \
+  --port 8771 \
+  --take-ownership
+```
+
+The ownership flag is deliberately mandatory because the installer recursively
+transfers the checkout to the dedicated `memory-mcp-home-operations` service
+account. The installer prompts for the PAT without echo; it never accepts the
+token in command-line arguments. It stores the source credential at
+`/etc/memory-mcp/home-operations/github_pat` with root-only permissions and
+passes it to the service through systemd's credential mechanism.
+
+The command prints the corresponding Codex registration command:
+
+```sh
+codex mcp add home-operations --url http://127.0.0.1:8771/mcp
+```
+
+Codex knows only the loopback MCP address. The PAT, writable checkout, GitHub
+CLI and outbound provider access remain in the separate service process. Any
+local process able to reach that loopback port can invoke the bounded MCP tools,
+so use host firewall rules when local users require different tool access.
+
+Review the generated unit without installing anything:
+
+```sh
+memory-mcp-service print-unit home-operations \
+  --repository /srv/memory/home-operations \
+  --port 8771
+```
+
+Rotate the PAT without putting it in shell history:
+
+```sh
+sudo "$(command -v memory-mcp-service)" rotate-token home-operations
+```
+
+Remove the service and credential while deliberately preserving the repository:
+
+```sh
+sudo "$(command -v memory-mcp-service)" uninstall home-operations
+```
+
+Uninstall leaves the dedicated service account and repository ownership intact
+so it cannot orphan repository files under a deleted numeric UID. Reassign or
+remove those explicitly after preserving any required Git work.
+
 ### Codex
 
 Codex CLI, the Codex IDE extension, and the ChatGPT desktop app share MCP
