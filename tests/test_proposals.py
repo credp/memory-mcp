@@ -26,6 +26,15 @@ class FakeProvider:
         return "https://example.invalid/reviews/1"
 
 
+class FailingProvider:
+    name = "test-review"
+
+    def open_review(
+        self, worktree: Path, *, base: str, head: str, title: str, body: str
+    ) -> str:
+        raise RepositoryError("synthetic provider failure")
+
+
 @pytest.fixture
 def proposal_repo(repo: Path, tmp_path: Path) -> tuple[Path, Path]:
     remote = tmp_path.parent / f"{tmp_path.name}-remote.git"
@@ -82,6 +91,37 @@ def test_proposal_uses_isolated_branch_and_leaves_checkout_unchanged(
             ),
         }
     ]
+
+
+def test_review_failure_reports_pushed_branch_for_admin_cleanup(
+    proposal_repo: tuple[Path, Path],
+) -> None:
+    repo, remote = proposal_repo
+    original_head = git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    with pytest.raises(RepositoryError) as raised:
+        ProposalService(repo, FailingProvider()).propose_memory(
+            path="incidents/provider-failure.md",
+            content="# Provider failure",
+            title="Record provider failure",
+            rationale="Exercise post-push failure reporting.",
+        )
+
+    message = str(raised.value)
+    assert "Proposal branch was pushed" in message
+    assert "Remote branch: memory-proposal/" in message
+    assert "commit:" in message
+    assert f"base: {original_head}" in message
+    assert "path: incidents/provider-failure.md" in message
+    assert "main branch was not modified" in message
+    assert "open a review for this branch or delete it manually" in message
+    assert "synthetic provider failure" in message
+    branch = message.split("Remote branch: ", 1)[1].split(";", 1)[0]
+    assert git(remote, "show", f"refs/heads/{branch}:incidents/provider-failure.md").stdout == (
+        "# Provider failure\n"
+    )
+    assert git(repo, "rev-parse", "HEAD").stdout.strip() == original_head
+    assert git(repo, "status", "--porcelain").stdout == ""
 
 
 @pytest.mark.parametrize(

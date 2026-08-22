@@ -165,10 +165,23 @@ class ProposalService:
             if source_run_id:
                 body += f"\nSource run: `{source_run_id}`"
             body += "\n\nCreated by memory-mcp; merge remains a human review decision."
-            url = self.provider.open_review(
-                temporary, base=self.base_branch, head=branch,
-                title=title, body=body,
-            )
+            try:
+                url = self.provider.open_review(
+                    temporary,
+                    base=self.base_branch,
+                    head=branch,
+                    title=title,
+                    body=body,
+                )
+            except MemoryError as exc:
+                raise RepositoryError(
+                    "Proposal branch was pushed, but review creation failed. "
+                    f"Remote branch: {branch}; commit: {commit}; "
+                    f"base: {base_commit}; path: {relative.as_posix()}. "
+                    f"The reviewed {self.base_branch} branch was not modified. "
+                    "An administrator must open a review for this branch or "
+                    f"delete it manually. Provider error: {exc}"
+                ) from exc
             return {
                 "provider": self.provider.name,
                 "url": url,
