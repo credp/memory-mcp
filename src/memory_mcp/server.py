@@ -5,13 +5,17 @@ from functools import lru_cache
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from .errors import MemoryError
+from .proposals import ProposalService
+from .providers import GitHubCliProvider
 from .repository import MemoryRepository
 
 READ_ONLY_MODE = "read-only"
 READ_WRITE_MODE = "read-write"
-VALID_MODES = {READ_ONLY_MODE, READ_WRITE_MODE}
+PULL_REQUEST_MODE = "pull-request"
+VALID_MODES = {READ_ONLY_MODE, READ_WRITE_MODE, PULL_REQUEST_MODE}
 
 
 def configured_mode() -> str:
@@ -49,6 +53,14 @@ if MODE == READ_ONLY_MODE:
 
 This deployment is read-only. It provides no tool that creates or modifies
 memories."""
+elif MODE == PULL_REQUEST_MODE:
+    SERVER_INSTRUCTIONS += """
+
+This deployment uses reviewable Git contributions. Refresh reads only a clean
+checkout of the reviewed base branch and fast-forwards it. propose_memory may
+publish a new Markdown-only branch and open a review request, but it never
+approves or merges one. Treat the returned review URL as pending until a human
+reviews and merges it."""
 
 mcp = FastMCP(
     "memory-mcp",
@@ -62,6 +74,23 @@ def repository() -> MemoryRepository:
     if not path:
         raise MemoryError("MEMORY_MCP_REPOSITORY is not configured")
     return MemoryRepository(path)
+
+
+@lru_cache(maxsize=1)
+def proposals() -> ProposalService:
+    path = os.environ.get("MEMORY_MCP_REPOSITORY")
+    if not path:
+        raise MemoryError("MEMORY_MCP_REPOSITORY is not configured")
+    provider = os.environ.get("MEMORY_MCP_PROPOSAL_PROVIDER", "github")
+    if provider != "github":
+        raise MemoryError("MEMORY_MCP_PROPOSAL_PROVIDER must be github")
+    return ProposalService(
+        repository().root,
+        GitHubCliProvider(),
+        remote=os.environ.get("MEMORY_MCP_PROPOSAL_REMOTE", "origin"),
+        base_branch=os.environ.get("MEMORY_MCP_PROPOSAL_BASE_BRANCH", "main"),
+        branch_prefix=os.environ.get("MEMORY_MCP_PROPOSAL_BRANCH_PREFIX", "memory-proposal"),
+    )
 
 
 @mcp.tool()
@@ -101,6 +130,44 @@ def capture(content: str, destination: str = "") -> dict[str, Any]:
 
 if MODE == READ_WRITE_MODE:
     mcp.tool()(capture)
+
+
+def refresh() -> dict[str, Any]:
+    """Fetch and fast-forward the clean memory checkout to reviewed main."""
+    return proposals().refresh()
+
+
+def propose_memory(
+    path: str,
+    content: str,
+    title: str,
+    rationale: str,
+    source_run_id: str = "",
+) -> dict[str, Any]:
+    """Create a Markdown-only contribution branch and open a review request."""
+    return proposals().propose_memory(
+        path=path, content=content, title=title, rationale=rationale,
+        source_run_id=source_run_id,
+    )
+
+
+if MODE == PULL_REQUEST_MODE:
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=True,
+        )
+    )(refresh)
+    mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=False,
+            openWorldHint=True,
+        )
+    )(propose_memory)
 
 
 def main() -> None:

@@ -1,6 +1,6 @@
 # memory-mcp
 
-`memory-mcp` is a small, local [Model Context Protocol](https://modelcontextprotocol.io/) server for a user-owned Git repository of durable memory. It gives agents reliable mechanisms to list, read, search, inspect history and diffs, and capture unstructured text.
+`memory-mcp` is a small, local [Model Context Protocol](https://modelcontextprotocol.io/) server for a user-owned Git repository of durable memory. It gives agents reliable mechanisms to list, read, search, inspect history and diffs, capture unstructured text, or submit bounded changes for review.
 
 > **The repository is the product's durable state. `memory-mcp` is merely an interface to it.**
 
@@ -27,7 +27,7 @@ It is deliberately not a database, ontology, knowledge graph, hosted service, ag
 
 ## Architecture
 
-The Python core and each running server instance are bound to exactly one configured repository root. It validates repository-relative paths and provides dependency-light filesystem and Git operations. A thin adapter exposes those operations as MCP tools over stdio. The server makes no network requests and sends no telemetry.
+The Python core and each running server instance are bound to exactly one configured repository root. It validates repository-relative paths and provides dependency-light filesystem and Git operations. A thin adapter exposes those operations as MCP tools over stdio. Read-only and capture modes make no network requests and send no telemetry. Pull-request mode deliberately uses Git and a configured forge provider to refresh reviewed memory and publish proposals.
 
 Installations that use more than one memory repository should configure a
 separate MCP server instance for each repository. The MCP client gives each
@@ -61,7 +61,8 @@ Set `MEMORY_MCP_REPOSITORY` in the process environment to that repository's root
 
 The server defaults to **read-only mode**. In this mode it does not register or
 advertise any tool capable of changing the memory repository. To deliberately
-enable new-file capture, set `MEMORY_MCP_MODE=read-write`. Any other value is
+enable new-file capture, set `MEMORY_MCP_MODE=read-write`. To use reviewed
+contributions instead, set `MEMORY_MCP_MODE=pull-request`. Any other value is
 rejected, so a typo cannot accidentally enable writes.
 
 An MCP client configuration commonly looks like:
@@ -84,17 +85,42 @@ The exact outer configuration format varies by client. For a global install, `uv
 
 ### Updating the memory repository
 
-For now, general memory updates happen through the filesystem and Git, not
-through MCP tools. A person or an agent may use any suitable manual or
-AI-assisted workflow to create, edit, move, review, and commit Markdown files in
-the memory repository. `memory-mcp` does not prescribe that workflow; the Git
-repository remains the source of truth.
+General memory updates may happen through ordinary filesystem and Git tools, or
+through the optional pull-request workflow. In either case, the Git repository
+remains the source of truth.
 
 The only current MCP write mechanism is the optional `capture` tool, which is
 available when a server instance is explicitly configured with
 `MEMORY_MCP_MODE=read-write`. Capture only creates a new untracked Markdown file
 and is not a general editing or repository-maintenance interface. In the default
 read-only mode, all updates must happen outside the MCP server.
+
+In `pull-request` mode, `refresh` fetches and fast-forwards a clean checkout of
+the configured reviewed branch. `propose_memory` creates one new Markdown file
+from that remote base in a disposable worktree, commits only that file, pushes
+a new branch, and asks the configured provider to open a review. It never
+approves or merges reviews, never rewrites history, and refuses a dirty primary
+checkout or an existing destination path.
+
+GitHub is the first provider. It uses the `gh` CLI and its existing
+authentication, so install `gh` and authenticate the service identity before
+starting the server. For unattended deployment, give that identity only the
+repository permissions needed to read contents, push proposal branches, and
+open pull requests. Supplying and rotating a GitHub App installation token is
+an operator concern; do not put it in the memory repository or MCP arguments.
+GitLab can be added as a separate provider without changing the proposal
+service or MCP contract.
+
+```json
+{
+  "MEMORY_MCP_MODE": "pull-request",
+  "MEMORY_MCP_REPOSITORY": "/path/to/private/memory",
+  "MEMORY_MCP_PROPOSAL_PROVIDER": "github",
+  "MEMORY_MCP_PROPOSAL_REMOTE": "origin",
+  "MEMORY_MCP_PROPOSAL_BASE_BRANCH": "main",
+  "MEMORY_MCP_PROPOSAL_BRANCH_PREFIX": "memory-proposal"
+}
+```
 
 ### Codex
 
@@ -185,6 +211,8 @@ before resolving that situation.
 - `history(path="", limit=20)` returns bounded Git history with commit, timestamp, author, and subject.
 - `diff(path="")` returns tracked working-tree changes against `HEAD` and separately lists untracked files. In an unborn repository it reports the staged diff.
 - `capture(content, destination="")` is available only in explicit `read-write` mode. It writes the content unchanged (apart from ensuring a final newline) to a new Markdown file. `destination` is a configurable, existing relative directory; the neutral default is the repository root. Creation uses an exclusive filename and does not stage or commit anything.
+- `refresh()` is available only in `pull-request` mode. It requires a clean checkout on the configured base branch, fetches that branch, and applies only a fast-forward update.
+- `propose_memory(path, content, title, rationale, source_run_id="")` is available only in `pull-request` mode. It accepts a new repository-relative Markdown path, scans all outbound text for common credential shapes, creates an isolated contribution, and returns the review URL and Git provenance.
 
 File reads are limited to 2 MiB, search skips files over 2 MiB, history is limited to 100 commits, and search is limited to 1,000 matches. These conservative v1 bounds keep MCP responses manageable.
 
@@ -199,26 +227,17 @@ separately named MCP server instances, so each repository retains an independent
 security and permission boundary. A server instance never routes to another
 repository or performs cross-repository operations.
 
-Repository content stays local: there are no cloud calls, external indexing, analytics, or telemetry. The public server repository contains no user data or configured memory path. MCP clients and the agents using them are nevertheless part of the trust boundary: a client with access can read the configured repository and, only in explicit read-write mode, invoke capture.
+Repository content stays local in read-only and capture modes. Pull-request mode
+sends the proposed content, title, rationale, branch, and commit to the Git
+remote and review provider. There is no external indexing, analytics, or
+telemetry. MCP clients, agents, Git hosting, and the narrowly scoped service
+identity are therefore part of that mode's trust boundary.
 
-Git operations are read-only in V1. The server never resets, discards changes, rewrites history, pushes, stages, or commits. Capture creates an obvious untracked file with mode `0600`. Dirty working trees are left intact.
-
-## Possible future MCP mutation model (Phase 2)
-
-The current update model is direct filesystem and Git access, as described
-above. If general-purpose mutation is later added to the MCP interface, it
-should use reviewable Git contributions rather than hidden writes or a second
-concurrency protocol. The structure is not yet decided; the following is one
-possible design rather than a committed interface:
-
-1. `propose_change` accepts agent-constructed file operations or a patch and records the base commit the agent actually inspected. It validates paths and patch structure without changing the worktree, then returns the proposal and preview diff.
-2. The user or agent reviews that diff.
-3. `apply_change` applies that exact contribution using normal Git semantics. If the repository has diverged, the divergence or merge conflict is returned plainly for the agent or user to resolve; the MCP layer does not disguise it as a custom stale-version error.
-4. A separate scoped-commit operation stages only the proposal's explicit paths, verifies the staged diff, and commits them. It refuses unrelated staged changes rather than absorbing them.
-
-Proposals should be self-describing data, not server-generated semantic decisions. Deletions and renames need explicit representation. No operation should reset other work, rewrite history, or push.
-
-Commits already identify their parents and Git already represents divergence, merging, and conflicts. Phase 2 must preserve that model: no repository lock service, shadow revision number, expected-`HEAD` gate, or per-file compare-and-swap layer. Agents should preferably work in an isolated branch or worktree when making contributions. A changing checkout can still race with filesystem writes, so apply must be narrowly scoped and must never reset or overwrite unrelated work. Concurrent captures use exclusive filenames only to prevent accidental overwrite; their ordering has no special meaning and Git remains responsible for reconciling them.
+Capture creates an obvious untracked file with mode `0600`. Pull-request mode
+never resets or discards local work, rewrites history, approves reviews, or
+merges them. Its contribution branches are intentionally visible on the remote;
+if review creation fails after a successful push, the branch remains available
+for diagnosis or manual review rather than being deleted implicitly.
 
 ## Development
 
@@ -248,10 +267,9 @@ release.
 **Phase 1 (implemented):** read-only-by-default list, read, textual search,
 history, and diff; optional explicit read-write capture.
 
-**Phase 2:** explore whether general-purpose MCP mutation is useful and, if so,
-design a reviewable Git-based interface. Until then, memory repositories are
-updated directly through the filesystem and Git; richer Markdown section
-addressing may be developed independently.
+**Phase 2 (implemented for new memories):** optional GitHub pull-request
+contributions created in isolated worktrees, with a provider boundary for other
+forges. Broader edit, rename, and deletion proposals remain future work.
 
 **Phase 3:** improve support and documentation for multi-memory installations
 by running one separately named MCP server instance per repository. Each

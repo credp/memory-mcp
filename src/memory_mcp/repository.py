@@ -28,6 +28,11 @@ class MemoryRepository:
         if Path(top).resolve() != self._root:
             raise RepositoryError("Configured path must be the root of its Git working tree")
 
+    @property
+    def root(self) -> Path:
+        """Return the validated repository root for internal service composition."""
+        return self._root
+
     def _resolve(self, relative: str = "", *, must_exist: bool = True) -> Path:
         raw = Path(relative or ".")
         if raw.is_absolute() or ".." in PurePath(relative).parts:

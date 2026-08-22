@@ -37,6 +37,31 @@ def test_read_write_mode_explicitly_enables_capture() -> None:
     assert "capture" in result.stdout.splitlines()[-1].split(",")
 
 
+def test_pull_request_mode_exposes_review_tools_only() -> None:
+    environment = os.environ.copy()
+    environment["MEMORY_MCP_MODE"] = "pull-request"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from memory_mcp.server import mcp; "
+                "print(','.join(mcp._tool_manager._tools)); "
+                "print(' '.join(mcp.instructions.split()))"
+            ),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+        env=environment,
+    )
+    tools, instructions = result.stdout.splitlines()[-2:]
+    assert "refresh" in tools.split(",")
+    assert "propose_memory" in tools.split(",")
+    assert "capture" not in tools.split(",")
+    assert "never approves or merges" in instructions
+
+
 def test_invalid_mode_fails_closed() -> None:
     environment = os.environ.copy()
     environment["MEMORY_MCP_MODE"] = "maybe"
