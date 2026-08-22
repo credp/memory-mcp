@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 
 from .errors import MemoryError
-from .repository import MemoryRepository
 
 
 NAME = re.compile(r"^[a-z][a-z0-9-]{0,19}$")
@@ -45,21 +44,42 @@ def validate_port(port: int) -> int:
 
 
 def validate_repository(value: str | Path) -> Path:
-    repository = MemoryRepository(value)
-    if repository._git("status", "--porcelain").stdout.strip():
-        raise MemoryError("Repository must have a clean working tree")
-    branch = repository._git("branch", "--show-current").stdout.strip()
-    if branch != "main":
-        raise MemoryError("Repository must be on main")
-    remote = repository._git("remote", "get-url", "origin").stdout.strip()
-    if not remote.startswith("https://github.com/") or "@" in remote.split("//", 1)[-1]:
-        raise MemoryError(
-            "origin must be a credential-free https://github.com/ repository URL"
-        )
-    root = repository.root
+    root = Path(value).expanduser().resolve()
+    if not root.is_dir():
+        raise MemoryError("Repository does not exist or is not a directory")
     if not SAFE_UNIT_PATH.fullmatch(str(root)):
         raise MemoryError(
             "Repository path contains characters unsupported by the systemd installer"
+        )
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        result = _run(
+            "git",
+            "-c",
+            f"safe.directory={root}",
+            "-C",
+            str(root),
+            *args,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise MemoryError(
+                f"Git repository check failed: {result.stderr.strip() or 'unknown error'}"
+            )
+        return result
+
+    top = Path(git("rev-parse", "--show-toplevel").stdout.strip()).resolve()
+    if top != root:
+        raise MemoryError("Configured path must be the root of its Git working tree")
+    if git("status", "--porcelain").stdout.strip():
+        raise MemoryError("Repository must have a clean working tree")
+    branch = git("branch", "--show-current").stdout.strip()
+    if branch != "main":
+        raise MemoryError("Repository must be on main")
+    remote = git("remote", "get-url", "origin").stdout.strip()
+    if not remote.startswith("https://github.com/") or "@" in remote.split("//", 1)[-1]:
+        raise MemoryError(
+            "origin must be a credential-free https://github.com/ repository URL"
         )
     return root
 
