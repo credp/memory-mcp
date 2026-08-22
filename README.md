@@ -145,6 +145,10 @@ account. The installer prompts for the PAT without echo; it never accepts the
 token in command-line arguments. It stores the source credential at
 `/etc/memory-mcp/home-operations/github_pat` with root-only permissions and
 passes it to the service through systemd's credential mechanism.
+It also installs a root-owned `pre-push` hook and forces the service to use it;
+the hook rejects deletions, tags, `main`, and every branch outside
+`memory-proposal/*`. This is a local mistake-prevention control, not a substitute
+for server-side branch protection against a stolen PAT.
 
 The command prints the corresponding Codex registration command:
 

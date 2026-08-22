@@ -18,6 +18,7 @@ NAME = re.compile(r"^[a-z][a-z0-9-]{0,19}$")
 SAFE_UNIT_PATH = re.compile(r"^/[A-Za-z0-9_./-]+$")
 DEFAULT_CONFIG_ROOT = Path("/etc/memory-mcp")
 DEFAULT_UNIT_ROOT = Path("/etc/systemd/system")
+DEFAULT_LIBEXEC_ROOT = Path("/usr/local/libexec/memory-mcp")
 
 
 def service_user(name: str) -> str:
@@ -77,6 +78,7 @@ def render_unit(
     python: Path,
     askpass: Path,
     credential: Path,
+    hooks: Path,
 ) -> str:
     validate_name(name)
     validate_port(port)
@@ -85,6 +87,7 @@ def render_unit(
         (python, "Python executable"),
         (askpass, "Credential helper"),
         (credential, "Credential"),
+        (hooks, "Git hooks"),
     ):
         validate_unit_path(value, label)
     runtime = validate_unit_path(python.parent.parent, "Python runtime")
@@ -109,6 +112,9 @@ Environment=MEMORY_MCP_PROPOSAL_BASE_BRANCH=main
 Environment=MEMORY_MCP_PROPOSAL_BRANCH_PREFIX=memory-proposal
 Environment=GIT_ASKPASS={askpass}
 Environment=GIT_TERMINAL_PROMPT=0
+Environment=GIT_CONFIG_COUNT=1
+Environment=GIT_CONFIG_KEY_0=core.hooksPath
+Environment=GIT_CONFIG_VALUE_0={hooks}
 Environment="GIT_AUTHOR_NAME=memory-mcp proposal agent"
 Environment=GIT_AUTHOR_EMAIL=memory-mcp@localhost
 Environment="GIT_COMMITTER_NAME=memory-mcp proposal agent"
@@ -131,6 +137,30 @@ ReadWritePaths={repository}
 
 [Install]
 WantedBy=multi-user.target
+"""
+
+
+def render_pre_push_hook(branch_prefix: str = "memory-proposal") -> str:
+    if not NAME.fullmatch(branch_prefix):
+        raise MemoryError("Push-guard branch prefix is invalid")
+    return f"""#!/bin/sh
+set -eu
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+    case "$local_oid" in
+        0000000000000000000000000000000000000000)
+            echo "memory-mcp push guard: deletion rejected" >&2
+            exit 1
+            ;;
+    esac
+    case "$remote_ref" in
+        refs/heads/{branch_prefix}/*) ;;
+        *)
+            echo "memory-mcp push guard: only {branch_prefix}/* branches are permitted" >&2
+            exit 1
+            ;;
+    esac
+done
 """
 
 
@@ -201,6 +231,13 @@ def install(args: argparse.Namespace) -> None:
 
     credential = DEFAULT_CONFIG_ROOT / name / "github_pat"
     _atomic_secret(credential, token)
+    hooks = DEFAULT_LIBEXEC_ROOT / name
+    hooks.mkdir(parents=True, exist_ok=True, mode=0o755)
+    os.chmod(DEFAULT_LIBEXEC_ROOT, 0o755)
+    os.chmod(hooks, 0o755)
+    pre_push = hooks / "pre-push"
+    pre_push.write_text(render_pre_push_hook(), encoding="utf-8")
+    os.chmod(pre_push, 0o755)
     unit = render_unit(
         name=name,
         repository=repository,
@@ -208,6 +245,7 @@ def install(args: argparse.Namespace) -> None:
         python=python,
         askpass=askpass,
         credential=credential,
+        hooks=hooks,
     )
     unit_path.write_text(unit, encoding="utf-8")
     os.chmod(unit_path, 0o644)
@@ -240,6 +278,12 @@ def uninstall(args: argparse.Namespace) -> None:
         credential.parent.rmdir()
     except OSError:
         pass
+    hooks = DEFAULT_LIBEXEC_ROOT / name
+    (hooks / "pre-push").unlink(missing_ok=True)
+    try:
+        hooks.rmdir()
+    except OSError:
+        pass
     _run("systemctl", "daemon-reload")
     print("Removed the service and credential; the memory repository was preserved")
 
@@ -257,6 +301,7 @@ def print_unit(args: argparse.Namespace) -> None:
             python=python,
             askpass=python.parent / "memory-mcp-github-askpass",
             credential=DEFAULT_CONFIG_ROOT / name / "github_pat",
+            hooks=DEFAULT_LIBEXEC_ROOT / name,
         ),
         end="",
     )

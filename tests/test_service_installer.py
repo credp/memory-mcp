@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from memory_mcp.github_askpass import main as askpass_main
 from memory_mcp.service_installer import (
     _atomic_secret,
     render_unit,
+    render_pre_push_hook,
     service_user,
     unit_name,
     validate_name,
@@ -64,6 +66,7 @@ def test_rendered_unit_keeps_pat_out_of_configuration(tmp_path: Path) -> None:
         python=Path("/opt/memory-mcp/bin/python"),
         askpass=Path("/opt/memory-mcp/bin/memory-mcp-github-askpass"),
         credential=Path("/etc/memory-mcp/operations/github_pat"),
+        hooks=Path("/usr/local/libexec/memory-mcp/operations"),
     )
     assert "User=memory-mcp-operations" in unit
     assert "MEMORY_MCP_MODE=pull-request" in unit
@@ -72,9 +75,41 @@ def test_rendered_unit_keeps_pat_out_of_configuration(tmp_path: Path) -> None:
     assert "LoadCredential=github_pat:/etc/memory-mcp/operations/github_pat" in unit
     assert "GH_TOKEN" not in unit
     assert "github_pat=" not in unit
+    assert "Environment=GIT_CONFIG_KEY_0=core.hooksPath" in unit
+    assert "GIT_CONFIG_VALUE_0=/usr/local/libexec/memory-mcp/operations" in unit
     assert f"ReadWritePaths={tmp_path / 'memory'}" in unit
     assert "ProtectSystem=strict" in unit
     assert "BindReadOnlyPaths=/opt/memory-mcp" in unit
+
+
+def test_push_guard_only_allows_new_proposal_branches(tmp_path: Path) -> None:
+    hook = tmp_path / "pre-push"
+    hook.write_text(render_pre_push_hook(), encoding="utf-8")
+    hook.chmod(0o755)
+    allowed = subprocess.run(
+        [str(hook)],
+        input=(
+            "HEAD 1111111111111111111111111111111111111111 "
+            "refs/heads/memory-proposal/run-1 "
+            "0000000000000000000000000000000000000000\n"
+        ),
+        text=True,
+        capture_output=True,
+    )
+    assert allowed.returncode == 0
+
+    for remote_ref, local_oid in (
+        ("refs/heads/main", "1" * 40),
+        ("refs/tags/release", "1" * 40),
+        ("refs/heads/memory-proposal/run-1", "0" * 40),
+    ):
+        rejected = subprocess.run(
+            [str(hook)],
+            input=f"HEAD {local_oid} {remote_ref} {'2' * 40}\n",
+            text=True,
+            capture_output=True,
+        )
+        assert rejected.returncode != 0
 
 
 def test_secret_write_is_atomic_and_root_only(tmp_path: Path) -> None:
